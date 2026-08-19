@@ -1,0 +1,52 @@
+name: Release
+
+# Runs on an annotated tag vX.Y.Z; the tag is the plugin's own version, on its own cadence — the
+# toolchain the plugin talks to is versioned in lyriclang/lyric.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Package and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      # The tag names the version gradle.properties carries. A zip whose file name and descriptor
+      # disagree reports the wrong version in the Plugins view forever after.
+      - name: The tag matches the plugin version
+        run: |
+          declared="$(grep -oP '(?<=^pluginVersion=).*' gradle.properties)"
+          [ "v${declared}" = "$GITHUB_REF_NAME" ] || {
+            echo "tag $GITHUB_REF_NAME, but gradle.properties says ${declared}"; exit 1; }
+
+      - name: Package plugin
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ./gradlew buildPlugin verifyPluginStructure
+          mkdir -p dist
+          cp build/distributions/*.zip "dist/jetbrains-lyric-${version}.zip"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

@@ -1,6 +1,6 @@
 # Lyric for JetBrains IDEs
 
-The thin plugin: it recognises `.lyr`, renders the TextMate grammar the VS Code extension ships,
+The thin plugin: it recognises `.lyr`, renders the bundled TextMate grammar,
 and starts `lyrls`. Everything language-aware — diagnostics across the project, completion, the
 jump, references in both directions, rename, semantic highlighting, signature help, folding,
 inlay hints — is the IDE's own LSP integration consuming the same server every other editor
@@ -20,9 +20,12 @@ project does not build.
 
 ## Installing
 
-Every release carries a `jetbrains-lyric-<version>.zip`. In the IDE:
-**Settings | Plugins | ⚙ | Install Plugin from Disk…** and pick the zip. The plugin is not on
-the Marketplace; the release asset is the distribution.
+Every release of **this repository** carries a `jetbrains-lyric-<version>.zip`. The plugin is
+versioned on its own cadence — the toolchain it talks to lives in
+[lyriclang/lyric](https://github.com/lyriclang/lyric) and releases separately. (Toolchain
+releases v1.8.0 through v1.9.1 carried the zip beside the archives; from here on it is found
+here.) In the IDE: **Settings | Plugins | ⚙ | Install Plugin from Disk…** and pick the zip. The
+plugin is not on the Marketplace; the release asset is the distribution.
 
 ## Building
 
@@ -30,9 +33,10 @@ the Marketplace; the release asset is the distribution.
 ./gradlew buildPlugin
 ```
 
-The zip lands in `build/distributions/`. The build takes the TextMate grammar from
-`../vscode-lyric` at packaging time — the grammar has one home, and the test suite pins that
-home against the lexer.
+The zip lands in `build/distributions/`. The TextMate grammar under `textmate/` is a working
+copy: its canonical home is `tooling/textmate` in
+[lyriclang/lyric](https://github.com/lyriclang/lyric), where the toolchain's test suite pins it
+against the lexer, and the `grammar-sync` CI job keeps the copy identical.
 
 ## The manual checklist
 

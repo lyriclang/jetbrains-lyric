@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Gradle caches the IntelliJ platform dependency, so the recurring cost is minutes, not the
+    # first run's download.
+    name: Build plugin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Build plugin
+        run: ./gradlew buildPlugin verifyPluginStructure
+
+      - name: Upload plugin
+        uses: actions/upload-artifact@v7
+        with:
+          name: jetbrains-lyric
+          path: build/distributions/*.zip
+          retention-days: 7
+
+  grammar-sync:
+    # The TextMate grammar's canonical home is the toolchain repository, where the test suite
+    # pins it against the lexer — a grammar is a second description of the same language, and two
+    # descriptions drift. This repository carries a working copy; this job is what keeps "copy"
+    # from becoming "fork".
+    name: Grammar matches the canonical copy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Checkout the toolchain
+        uses: actions/checkout@v7
+        with:
+          repository: lyriclang/lyric
+          path: lyric
+          sparse-checkout: tooling
+
+      - name: Compare
+        run: |
+          canon=lyric/tooling/textmate
+          # Transition: until the toolchain's org-split lands, the canonical copy still lives in
+          # the old client directory. Delete the fallback when it does.
+          [ -d "$canon" ] || canon=lyric/tooling/vscode-lyric
+          diff -r textmate/syntaxes "$canon/syntaxes"
+          diff textmate/language-configuration.json "$canon/language-configuration.json"

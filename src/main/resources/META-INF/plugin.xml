@@ -1,10 +1,10 @@
 <idea-plugin>
     <id>dev.lyric.jetbrains</id>
     <name>Lyric</name>
-    <vendor>OIL1I</vendor>
+    <vendor>lyriclang</vendor>
 
     <description><![CDATA[
-        Language support for <a href="https://github.com/OIL1I/lyric">Lyric</a> through its own
+        Language support for <a href="https://github.com/lyriclang/lyric">Lyric</a> through its own
         language server: project-wide diagnostics, completion, go to definition, find references,
         rename, semantic highlighting, signature help, folding and inlay hints — every answer
         comes from the Lyric compiler, none from a re-implementation.

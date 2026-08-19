@@ -57,11 +57,12 @@ intellijPlatform {
     buildSearchableOptions = false
 }
 
-// The grammar is not copied into this repository twice: the VS Code extension owns it (and the
-// test suite pins it against the lexer); this build takes it from there at packaging time.
+// The grammar's canonical home is the toolchain repository (tooling/textmate in
+// lyriclang/lyric), where the test suite pins it against the lexer. What lies under textmate/
+// here is the plugin's working copy; the grammar-sync CI job keeps it identical to the
+// canonical one.
 tasks.processResources {
-    from(layout.projectDirectory.dir("../vscode-lyric")) {
-        include("syntaxes/**", "language-configuration.json")
+    from(layout.projectDirectory.dir("textmate")) {
         into("textmate")
     }
 }
