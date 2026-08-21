@@ -4,6 +4,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.dsl.builder.AlignX
@@ -11,7 +12,7 @@ import com.intellij.ui.dsl.builder.panel
 import javax.swing.JComponent
 
 /**
- * One setting: the toolchain directory. Left empty, `lyrls` is expected on PATH — the ordinary
+ * One setting: the toolchain directory. Left empty, the tools are expected on PATH — the ordinary
  * case for an installed toolchain, and the same default the VS Code extension has.
  */
 @State(name = "LyricSettings", storages = [Storage("lyric.xml")])
@@ -44,14 +45,23 @@ class LyricConfigurable : Configurable {
         val browser = TextFieldWithBrowseButton()
         field = browser
 
+        // Without a listener the button beside the field opens nothing at all; the setting names a
+        // directory, so that is what the chooser offers. There is no project here — this is an
+        // application-level setting, and the parameter is nullable for exactly that case.
+        browser.addBrowseFolderListener(
+            null,
+            FileChooserDescriptorFactory.singleDir().withTitle("Lyric Toolchain Directory"),
+        )
+
         return panel {
             row("Toolchain directory:") {
                 cell(browser)
                     .align(AlignX.FILL)
                     .comment(
-                        "The directory holding the lyric tools; lyrls is started from there. " +
-                            "Leave empty to find lyrls on PATH. A change takes effect for newly " +
-                            "opened files or after a restart of the IDE."
+                        "The directory holding the lyric tools; the language server, the driver " +
+                            "and the debug adapter are started from there. Leave empty to find " +
+                            "them on PATH. A change takes effect for newly opened files or after " +
+                            "a restart of the IDE."
                     )
             }
         }

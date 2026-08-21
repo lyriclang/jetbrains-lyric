@@ -5,8 +5,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.lsp.api.LspServerSupportProvider
 import com.intellij.platform.lsp.api.ProjectWideLspServerDescriptor
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * The plugin's whole language intelligence: recognise a `.lyr` file and start `lyrls` for it.
@@ -36,27 +34,4 @@ class LyricLspServerDescriptor(project: Project) : ProjectWideLspServerDescripto
 
     override fun createCommandLine(): GeneralCommandLine =
         GeneralCommandLine(LyricToolchain.languageServer())
-}
-
-/**
- * Where `lyrls` lives — the same ladder the VS Code extension climbs: an explicit setting first,
- * then the bare name, which leaves the lookup to PATH. The setting names the toolchain DIRECTORY
- * rather than the binary, because the directory is what an installation is.
- */
-object LyricToolchain {
-    fun languageServer(): String {
-        val configured = LyricSettings.instance.state.toolchainDirectory.trim()
-        if (configured.isNotEmpty()) {
-            val binary = if (System.getProperty("os.name").startsWith("Windows")) {
-                "lyrls.exe"
-            } else {
-                "lyrls"
-            }
-
-            val candidate = Path.of(configured).resolve(binary)
-            if (Files.isRegularFile(candidate)) return candidate.toString()
-        }
-
-        return "lyrls"
-    }
 }
