@@ -12,6 +12,7 @@ import com.intellij.execution.configurations.LocatableRunConfigurationOptions
 import com.intellij.execution.configurations.RunConfiguration
 import com.intellij.execution.configurations.RunProfileState
 import com.intellij.execution.configurations.RuntimeConfigurationError
+import com.intellij.execution.executors.DefaultDebugExecutor
 import com.intellij.execution.executors.DefaultRunExecutor
 import com.intellij.execution.filters.RegexpFilter
 import com.intellij.execution.process.ProcessHandler
@@ -23,6 +24,7 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.SettingsEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.panel
@@ -75,6 +77,7 @@ class LyricRunOptions : LocatableRunConfigurationOptions() {
     var program: String? by string("")
     var programArguments: String? by string("")
     var workingDirectory: String? by string("")
+    var stopOnEntry: Boolean by property(false)
 }
 
 /**
@@ -105,6 +108,13 @@ class LyricRunConfiguration(project: Project, factory: ConfigurationFactory, nam
         get() = getOptions().workingDirectory.orEmpty()
         set(value) {
             getOptions().workingDirectory = value
+        }
+
+    /** Read by the debugger alone: a run has no entry to stop at. */
+    var stopOnEntry: Boolean
+        get() = getOptions().stopOnEntry
+        set(value) {
+            getOptions().stopOnEntry = value
         }
 
     /** Where the process is started when the configuration names no directory of its own. */
@@ -138,11 +148,16 @@ class LyricRunConfiguration(project: Project, factory: ConfigurationFactory, nam
         }
     }
 
+    /**
+     * The one fork in the plugin: Run starts the driver, Debug starts nothing at all — there the
+     * adapter owns the program, and the state exists only to carry the console the platform hands
+     * to the debug process.
+     */
     override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState? =
-        if (executor.id == DefaultRunExecutor.EXECUTOR_ID) {
-            LyricRunProfileState(environment, this)
-        } else {
-            null
+        when (executor.id) {
+            DefaultRunExecutor.EXECUTOR_ID -> LyricRunProfileState(environment, this)
+            DefaultDebugExecutor.EXECUTOR_ID -> LyricDebugStubState(environment)
+            else -> null
         }
 }
 
@@ -198,6 +213,7 @@ class LyricRunConfigurationEditor(project: Project) : SettingsEditor<LyricRunCon
     private val program = TextFieldWithBrowseButton()
     private val programArguments = JBTextField()
     private val workingDirectory = TextFieldWithBrowseButton()
+    private val stopOnEntry = JBCheckBox("Stop on the first line of main")
 
     init {
         program.addBrowseFolderListener(
@@ -229,17 +245,23 @@ class LyricRunConfigurationEditor(project: Project) : SettingsEditor<LyricRunCon
                 .align(AlignX.FILL)
                 .comment("Left empty, the program's own directory is used.")
         }
+        row {
+            cell(stopOnEntry)
+                .comment("Debugging only; a run has no entry to stop at.")
+        }
     }
 
     override fun resetEditorFrom(configuration: LyricRunConfiguration) {
         program.text = configuration.program
         programArguments.text = configuration.programArguments
         workingDirectory.text = configuration.workingDirectory
+        stopOnEntry.isSelected = configuration.stopOnEntry
     }
 
     override fun applyEditorTo(configuration: LyricRunConfiguration) {
         configuration.program = program.text
         configuration.programArguments = programArguments.text
         configuration.workingDirectory = workingDirectory.text
+        configuration.stopOnEntry = stopOnEntry.isSelected
     }
 }

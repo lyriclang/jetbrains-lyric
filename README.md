@@ -1,7 +1,8 @@
 # Lyric for JetBrains IDEs
 
 The thin plugin: it recognises `.lyr`, renders the bundled TextMate grammar,
-starts `lyrls`, and runs a program through the toolchain's driver. Everything language-aware —
+starts `lyrls`, runs a program through the toolchain's driver and debugs it through `lyrdbg`.
+Everything language-aware —
 diagnostics across the project, completion, the
 jump, references in both directions, rename, semantic highlighting, signature help, folding,
 inlay hints — is the IDE's own LSP integration consuming the same server every other editor
@@ -19,15 +20,42 @@ What runs is `lyric run`, the driver: the one command that compiles and executes
 the same command a terminal would use on that file. A compiler diagnostic in the console carries
 its `file:line:column` as a link into the editor.
 
+## Debugging
+
+The same configuration under **Debug** starts `lyrdbg`, the toolchain's debug adapter, and the
+IDE's own Debug Adapter Protocol client drives it: breakpoints in the gutter, step over, into and
+out, the call stack with source lines, the variables panel with locals and globals under their
+names, and hover evaluation. None of it is implemented here — it is the same adapter the VS Code
+extension talks to, one client further.
+
+The adapter compiles the program itself, in the **debug shape**: with the source map, with debug
+info, with the optimizations off. What runs is the file in the editor, not an optimized build in
+which half the frames no longer exist.
+
+Three things the debugger does not do, stated rather than discovered:
+
+- **Breakpoint conditions and log expressions are not offered**, because the adapter evaluates
+  NAMES, not expressions: `v.x` and `player.pos.y` are answered, `v.x + 1` is not. A condition
+  field would promise an evaluator that does not exist.
+- **Exception breakpoints do not exist.** A Lyric panic ends the program rather than stopping it;
+  the message and the backtrace land in the console and the exit code is 101.
+- **The standard library is not steppable**, and the global initializer runs before the debugger
+  attaches — both are properties of the adapter, described in the toolchain's debugging guide.
+
+When a session misbehaves, the whole DAP conversation can be written to disk: set
+`dap.message.trace.dir` in **Help | Find Action | Registry** to a folder, and the requests and
+responses land there as files.
+
 ## Requirements
 
 - A **commercial** JetBrains IDE, **2026.1 or newer** — the platform's LSP API does not exist in
   the Community editions, and the features this plugin relies on (rename arrived in 2026.1,
   signature help and workspace symbols in 2025.3, folding and inlay hints in 2025.2) set the
   baseline. CLion, IntelliJ IDEA, Rider, GoLand, PyCharm and the rest all qualify.
-- The Lyric toolchain. `lyrls` and `lyric` are found on `PATH`, or under the directory named in
-  **Settings | Languages & Frameworks | Lyric** — point it at the folder the release archive
-  unpacks to, and both are configured at once.
+- The Lyric toolchain. `lyrls`, `lyric` and `lyrdbg` are found on `PATH`, or under the directory
+  named in **Settings | Languages & Frameworks | Lyric** — point it at the folder the release
+  archive unpacks to, and all three are configured at once. Debugging needs a toolchain of
+  **2.3.0 or newer**, the release `lyrdbg` first shipped in.
 
 ## Installing
 
@@ -44,7 +72,16 @@ plugin is not on the Marketplace; the release asset is the distribution.
 ./gradlew buildPlugin
 ```
 
-The zip lands in `build/distributions/`. The TextMate grammar under `textmate/` is a working
+```bash
+./gradlew verifyPlugin
+```
+
+The zip lands in `build/distributions/`. `verifyPlugin` runs the JetBrains plugin verifier against
+both ends of the supported range — the 2026.1 baseline and the current release — and downloads
+those IDEs the first time. It is what stands in for tests here: the platform's DAP client is
+marked experimental, so the day it changes shape, that job is what says so.
+
+The TextMate grammar under `textmate/` is a working
 copy: its canonical home is `tooling/textmate` in
 [lyriclang/lyric](https://github.com/lyriclang/lyric), where the toolchain's test suite pins it
 against the lexer, and the `grammar-sync` CI job keeps the copy identical.
@@ -73,3 +110,16 @@ it is not — headless IDE tests cost more harness than this plugin has code. Af
 12. Add `alpha "two words"` under *Arguments* in the configuration — `main(args)` sees two
     arguments, not one and not none.
 13. Point *Program* at a `.lyrbc` built by `lyric build` — it runs without compiling.
+14. Set a breakpoint in the gutter of a `.lyr` line and press *Debug*: it hits, and the line is
+    highlighted before it runs.
+15. A breakpoint on a blank line or a declaration slides down to the next executable line.
+16. Step over, into and out — one step is one source line; a step into a stdlib call runs through
+    it.
+17. The call stack names each frame's function and line; selecting a frame shows its locals.
+18. Expand a struct, an enum payload and an array in the variables panel; module-level `let`s
+    stand under *Globals*.
+19. Hover a name in the editor while stopped — its value appears. `v.x` in the debug console
+    answers; `v.x + 1` says it is not a known name.
+20. Let the program panic — the session ends, the backtrace is in the console, exit code 101.
+21. Check the breakpoint dialog: Lyric line breakpoints carry no condition field, and no Lyric
+    exception category is offered.
