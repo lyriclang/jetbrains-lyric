@@ -13,9 +13,9 @@ import com.intellij.platform.lsp.api.ProjectWideLspServerDescriptor
  * tokens, signature help, folding, inlay hints — is the platform consuming the same server the
  * VS Code extension talks to. One server, two editors, no second frontend.
  *
- * The DEPRECATED API names are used on purpose: `LspServerSupportProvider` is documented as
- * preserved and fully functional, while its successor exists only from 2026.1.4 — pinning the
- * plugin to a point release for a rename of the same API would be baseline for nothing.
+ * These are the API names of the 2026.1 baseline the plugin compiles against. A later release
+ * renamed them to `LspIntegrationProvider` and keeps these deprecated but working; the reverse
+ * does not hold, so binding to the successor would cost every IDE below the release that has it.
  */
 class LyricLspServerSupportProvider : LspServerSupportProvider {
     override fun fileOpened(

@@ -6,8 +6,9 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 
 plugins {
-    // 2.3 at minimum: the 2026.2 platform's classes carry Kotlin 2.4.0 metadata, and a compiler
-    // reads one minor version ahead of its own.
+    // 2.3 at minimum: the newest platform's classes carry Kotlin 2.4.0 metadata, and a compiler
+    // reads one minor version ahead of its own. The compile target below is older than that, but
+    // the verifier runs against the newest one and this floor keeps that possible.
     id("org.jetbrains.kotlin.jvm") version "2.3.0"
     id("org.jetbrains.intellij.platform") version "2.18.1"
 }
@@ -39,7 +40,13 @@ dependencies {
         // folding and inlay hints reach the IDE — each entered the platform's LSP integration
         // between 2024.2 and 2026.1, and a 2023.2 baseline would have kept only diagnostics,
         // completion and the jump.
-        intellijIdea("2026.2.0.1")
+        //
+        // Compiled against the BASELINE rather than the newest release, which is not a detail: in
+        // 2026.2 the LSP interfaces were renamed, so a build against that release binds the
+        // override to types 2026.1 does not have and every `.lyr` file opened there fails with
+        // NoSuchClassError. Old names resolve in the new IDE; new names do not resolve in the old
+        // one. `verifyPlugin` is what turned that from an assumption into a measurement.
+        intellijIdea("2026.1")
 
         // The TextMate machinery that renders the bundled grammar.
         bundledPlugin("org.jetbrains.plugins.textmate")
@@ -68,9 +75,9 @@ intellijPlatform {
     }
 
     // Both ends of the supported range, because a plugin is only compatible with what it was
-    // measured against: the 2026.1 baseline the descriptor claims, and the current release it is
-    // compiled with. The DAP client is marked experimental in the platform, so the day it changes
-    // shape this job is what says so.
+    // measured against: the 2026.1 baseline it is compiled against, and the newest release, where
+    // the binding has to still resolve. The DAP client is marked experimental in the platform, so
+    // the day it changes shape this job is what says so.
     pluginVerification {
         ides {
             create(IntelliJPlatformType.IntellijIdea, "2026.1")
