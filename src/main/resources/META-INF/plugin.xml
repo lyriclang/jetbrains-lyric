@@ -9,7 +9,12 @@
         rename, semantic highlighting, signature help, folding and inlay hints — every answer
         comes from the Lyric compiler, none from a re-implementation.
         <br/><br/>
-        The <code>lyrls</code> binary is found on PATH, or under the toolchain directory named in
+        A <b>Lyric</b> run configuration runs a program through the toolchain's driver, and the
+        editor's context menu offers one for the file it stands on. The same configuration under
+        Debug starts the toolchain's debug adapter: breakpoints, stepping, the call stack and the
+        variables panel, all answered by the Lyric debugger.
+        <br/><br/>
+        The binaries are found on PATH, or under the toolchain directory named in
         <i>Settings&nbsp;|&nbsp;Languages&nbsp;&amp;&nbsp;Frameworks&nbsp;|&nbsp;Lyric</i>.
     ]]></description>
 
@@ -17,8 +22,16 @@
          com.intellij.modules.ultimate, keeps the plugin loadable in every IDE that has the
          integration — CLion and Rider included. -->
     <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lang</depends>
     <depends>com.intellij.modules.lsp</depends>
     <depends>org.jetbrains.plugins.textmate</depends>
+
+    <!-- The DAP client is a content module of the platform rather than a plugin, and it carries no
+         `com.intellij.modules.*` alias the way the LSP integration does — a module dependency is
+         the only way to name it. -->
+    <dependencies>
+        <module name="intellij.platform.dap"/>
+    </dependencies>
 
     <extensions defaultExtensionNs="com.intellij">
         <platform.lsp.serverSupportProvider
@@ -32,11 +45,37 @@
             id="dev.lyric.jetbrains.settings"
             displayName="Lyric"/>
 
+        <!-- The platform has no launch.json: a run configuration is what names a program, and it
+             is also what the debugger will need to recognise. The producer is the ergonomics on
+             top — Run and Debug from a .lyr file without opening the dialog. -->
+        <configurationType
+            implementation="dev.lyric.jetbrains.LyricRunConfigurationType"/>
+
+        <runConfigurationProducer
+            implementation="dev.lyric.jetbrains.LyricRunConfigurationProducer"/>
+
+        <xdebugger.breakpointType
+            implementation="dev.lyric.jetbrains.LyricLineBreakpointType"/>
+
+        <xdebugger.breakpointType
+            implementation="dev.lyric.jetbrains.LyricExceptionBreakpointType"/>
+
         <!-- The point is declared by the TextMate plugin but QUALIFIED under com.intellij:
              `com.intellij.textmate.bundleProvider`, verbatim from intellij.textmate.xml. The
              1.2.0 zip registered it under the plugin's own namespace, which exists nowhere —
              the provider was never called and nothing was colored. -->
         <textmate.bundleProvider
             implementation="dev.lyric.jetbrains.LyricTextMateBundleProvider"/>
+    </extensions>
+
+    <!-- The platform's own DAP runner is already registered; these two points are all it needs to
+         find the adapter (the support provider) and to recognise a configuration as ours (the
+         launch arguments). -->
+    <extensions defaultExtensionNs="com.intellij.platform.dap">
+        <debugAdapterSupportProvider
+            implementation="dev.lyric.jetbrains.LyricDebugAdapterSupportProvider"/>
+
+        <launchArgumentsProvider
+            implementation="dev.lyric.jetbrains.LyricLaunchArgumentsProvider"/>
     </extensions>
 </idea-plugin>

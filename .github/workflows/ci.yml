@@ -39,6 +39,32 @@ jobs:
           path: build/distributions/*.zip
           retention-days: 7
 
+  verify:
+    # The plugin verifier against both ends of the supported range. There are no unit tests here —
+    # a headless IDE test costs more harness than this plugin has code — so this job is the
+    # automated half of the checking, and the README's manual checklist is the other.
+    #
+    # It downloads an IDE per verified version, which is why it is a job of its own: minutes, and
+    # a cache the build job has no use for.
+    name: Verify against the supported IDEs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Verify plugin
+        run: ./gradlew verifyPlugin
+
   grammar-sync:
     # The TextMate grammar's canonical home is the toolchain repository, where the test suite
     # pins it against the lexer — a grammar is a second description of the same language, and two
