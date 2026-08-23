@@ -1,7 +1,8 @@
 # Lyric for JetBrains IDEs
 
 The thin plugin: it recognises `.lyr`, renders the bundled TextMate grammar,
-starts `lyrls`, runs a program through the toolchain's driver and debugs it through `lyrdbg`.
+starts `lyrls`, runs a program through the toolchain's driver, and debugs it — either by launching
+it through `lyrdbg` or by attaching to a host that is already running one.
 Everything language-aware —
 diagnostics across the project, completion, the
 jump, references in both directions, rename, semantic highlighting, signature help, folding,
@@ -46,6 +47,21 @@ When a session misbehaves, the whole DAP conversation can be written to disk: se
 `dap.message.trace.dir` in **Help | Find Action | Registry** to a folder, and the requests and
 responses land there as files.
 
+## Attaching to a running host
+
+A **Lyric Attach** configuration debugs a program that is already running inside a host — a game, an
+editor, anything embedding the VM. There the adapter is not a process this plugin starts: it lives
+inside the host, beside the program it debugs, and serves the protocol over a socket the host
+opened. The configuration is the host and the port; everything else the host already knows.
+
+Nothing is compiled and nothing is started. A breakpoint set here binds against the program as it
+runs and takes effect the next time execution reaches that line — which is the point, because the
+bug worth stopping at is rarely the one at startup. Disconnecting gives the program back: the
+breakpoints go and a parked thread is released, so the host runs on without a debugger holding it.
+
+It needs a host built against the toolchain's `DapServer`, from **2.9.0** on. The configuration has
+no Run button, because there is nothing here to run.
+
 ## Requirements
 
 - A **commercial** JetBrains IDE, **2026.1 or newer** — the platform's LSP API does not exist in
@@ -54,8 +70,9 @@ responses land there as files.
   baseline. CLion, IntelliJ IDEA, Rider, GoLand, PyCharm and the rest all qualify.
 - The Lyric toolchain. `lyrls`, `lyric` and `lyrdbg` are found on `PATH`, or under the directory
   named in **Settings | Languages & Frameworks | Lyric** — point it at the folder the release
-  archive unpacks to, and all three are configured at once. Debugging needs a toolchain of
-  **2.3.0 or newer**, the release `lyrdbg` first shipped in.
+  archive unpacks to, and all three are configured at once. Debugging by launching needs a
+  toolchain of **2.3.0 or newer**, the release `lyrdbg` first shipped in; attaching needs
+  **2.9.0 or newer** on the host's side, where the adapter actually runs.
 
 ## Installing
 
@@ -123,3 +140,9 @@ it is not — headless IDE tests cost more harness than this plugin has code. Af
 20. Let the program panic — the session ends, the backtrace is in the console, exit code 101.
 21. Check the breakpoint dialog: Lyric line breakpoints carry no condition field, and no Lyric
     exception category is offered.
+22. Against a host serving `DapServer` on a port: a **Lyric Attach** configuration connects, and
+    the configuration offers Debug but no Run.
+23. A breakpoint set while the host runs hits the next time the program reaches that line — with
+    no restart of anything.
+24. Stop the session: the host keeps running, and its next frame is not parked by a breakpoint
+    nobody is reading any more.
