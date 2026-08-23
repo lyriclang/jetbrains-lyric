@@ -51,6 +51,9 @@
         <configurationType
             implementation="dev.lyric.jetbrains.LyricRunConfigurationType"/>
 
+        <configurationType
+            implementation="dev.lyric.jetbrains.LyricAttachConfigurationType"/>
+
         <runConfigurationProducer
             implementation="dev.lyric.jetbrains.LyricRunConfigurationProducer"/>
 

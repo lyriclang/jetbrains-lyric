@@ -22,6 +22,7 @@ import com.intellij.platform.dap.DebugAdapterSupportProvider
 import com.intellij.platform.dap.LaunchRequestArguments
 import com.intellij.platform.dap.connection.CommandLineDebugAdapterHandle
 import com.intellij.platform.dap.connection.DebugAdapterHandle
+import com.intellij.platform.dap.connection.DebugAdapterSocketConnection
 import com.intellij.util.execution.ParametersListUtil
 
 /**
@@ -52,24 +53,32 @@ class LyricDebugAdapterDescriptor : DebugAdapterDescriptor<LyricAdapterId>() {
         )
 
     /**
-     * The adapter is a child process talking over its own stdin and stdout, which is why nothing
-     * about the program is passed on the command line: everything it needs travels in the `launch`
-     * request.
+     * Where the adapter is, and the two answers are different programs.
+     *
+     * A launch starts `lyrdbg` as a child process talking over its own stdin and stdout — nothing
+     * about the program is passed on the command line, because everything it needs travels in the
+     * `launch` request. An attach connects to a host that is already running one: there the adapter
+     * lives inside that process, beside the program it debugs, and this end contributes the socket.
      */
     override suspend fun launchDebugAdapter(
         environment: ExecutionEnvironment,
         executionResult: ExecutionResult?,
         sessionId: String,
-    ): DebugAdapterHandle =
-        CommandLineDebugAdapterHandle(GeneralCommandLine(LyricToolchain.debugAdapter()))
+    ): DebugAdapterHandle {
+        val attach = environment.runProfile as? LyricAttachConfiguration
+            ?: return CommandLineDebugAdapterHandle(GeneralCommandLine(LyricToolchain.debugAdapter()))
+
+        return DebugAdapterSocketConnection(attach.host, attach.port)
+    }
 }
 
 /**
- * What makes the platform's DAP runner take a Lyric configuration — and what it sends as the
- * `launch` request.
+ * What makes the platform's DAP runner take a Lyric configuration — and which request it sends.
  *
- * The three fields are the ones the adapter reads, under the names the VS Code extension uses:
- * two clients that send differently named fields would be two contracts for one protocol.
+ * A launch carries the three fields the adapter reads, under the names the VS Code extension uses:
+ * two clients sending differently named fields would be two contracts for one protocol. An attach
+ * carries nothing at all — the server was built around a controller and a directory before this
+ * end ever connected, so there is nothing left to tell it.
  *
  * Only the Debug executor is claimed. The runner would take Run as well and start the program
  * through the adapter with `noDebug`, but that program is compiled unoptimized by the adapter,
@@ -77,9 +86,14 @@ class LyricDebugAdapterDescriptor : DebugAdapterDescriptor<LyricAdapterId>() {
  */
 class LyricLaunchArgumentsProvider : DapLaunchArgumentsProvider {
     override fun isApplicable(executorId: String, profile: RunProfile): Boolean =
-        executorId == DefaultDebugExecutor.EXECUTOR_ID && profile is LyricRunConfiguration
+        executorId == DefaultDebugExecutor.EXECUTOR_ID &&
+            (profile is LyricRunConfiguration || profile is LyricAttachConfiguration)
 
     override fun getLaunchArguments(project: Project, profile: RunProfile): LaunchRequestArguments {
+        if (profile is LyricAttachConfiguration) {
+            return LaunchRequestArguments(LyricAdapterId, DapStartRequest.Attach, emptyMap())
+        }
+
         val configuration = profile as LyricRunConfiguration
 
         return LaunchRequestArguments(
