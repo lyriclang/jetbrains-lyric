@@ -1,87 +1,68 @@
 # Lyric for JetBrains IDEs
 
-The thin plugin: it recognises `.lyr`, renders the bundled TextMate grammar,
-starts `lyrls`, runs a program through the toolchain's driver, and debugs it — either by launching
-it through `lyrdbg` or by attaching to a host that is already running one.
-Everything language-aware —
-diagnostics across the project, completion, the
-jump, references in both directions, rename, semantic highlighting, signature help, folding,
-inlay hints — is the IDE's own LSP integration consuming the same server every other editor
-talks to. There is deliberately **no PSI implementation**: that would be a second frontend in
-Kotlin with a permanent lag behind the grammar, which is the kind of parallel mechanism this
-project does not build.
+The thin plugin for [Lyric](https://github.com/lyriclang/lyric) 5: it recognises `.lyr`,
+renders the bundled TextMate grammar, starts the toolchain's language server `lyric lsp`, runs a
+package, a script or the package's tests, and debugs them through `lyric dap`. From 2.0.0 it
+speaks to Lyric 5's one binary; Lyric 4's `lyrls` and `lyrdbg` belong to
+[Lyric-Script](https://github.com/lyriclang/lyric-script), and 1.4.0 is the release for them.
 
-## Running a program
+Everything language-aware — diagnostics across the package, quick fixes, formatting, completion,
+the jump, references, rename, semantic highlighting, signature help, folding, inlay hints, the
+lenses above a test — is the IDE's own LSP integration consuming the same server every other
+editor talks to. There is deliberately **no PSI implementation**: that would be a second frontend
+in Kotlin with a permanent lag behind the grammar.
 
-A **Lyric** run configuration names a program (`.lyr` or a built `.lyrbc`), the arguments its
-`main` receives, and the directory to run in. The editor's context menu on a `.lyr` file offers
-one directly — *Run 'main.lyr'* — so the dialog is only needed to add arguments.
+## Running
 
-What runs is `lyric run`, the driver: the one command that compiles and executes in one step, and
-the same command a terminal would use on that file. A compiler diagnostic in the console carries
-its `file:line:column` as a link into the editor.
+A **Lyric** run configuration names a **package's directory** — the one its `lyric.toml` stands
+in — or a `.lyr` file of its own, the arguments the program receives and the directory it runs
+in; with a **test** named, it runs the package's tests whose names hold it instead. The editor's
+context menu on a `.lyr` file offers one for the file's package directly.
+
+What runs is the toolchain: `lyric run -C <package>`, `lyric run <file>`, or `lyric test -f
+<test>` — the command a terminal would use. A finding in the console carries its
+`file:line:column` as a link into the editor.
+
+**Test lenses**: the server puts **Run test** and **Debug test** above every `@Test` and
+doc-test; a click makes a configuration for that test and runs or debugs it.
 
 ## Debugging
 
-The same configuration under **Debug** starts `lyrdbg`, the toolchain's debug adapter, and the
-IDE's own Debug Adapter Protocol client drives it: breakpoints in the gutter, step over, into and
-out, the call stack with source lines, the variables panel with locals and globals under their
-names, and hover evaluation. None of it is implemented here — it is the same adapter the VS Code
-extension talks to, one client further.
+The same configuration under **Debug** starts `lyric dap`, and the IDE's Debug Adapter Protocol
+client drives it. The adapter builds what the configuration names in the debug profile and hands
+it to **lldb-dap**: breakpoints in the gutter, stepping, the call stack by the functions' Lyric
+names at their Lyric lines, the variables by their Lyric names — a string as its text, an array
+by its elements, an optional and an enum by what they hold. A **panic** stops the program where
+it happens.
 
-The adapter compiles the program itself, in the **debug shape**: with the source map, with debug
-info, with the optimizations off. What runs is the file in the editor, not an optimized build in
-which half the frames no longer exist.
+**Lyric Attach** attaches to a running program by its process id — lldb's attach, through the same
+adapter. It has no Run button, because there is nothing to run.
 
-Three things the debugger does not do, stated rather than discovered:
-
-- **Breakpoint conditions and log expressions are not offered**, because the adapter evaluates
-  NAMES, not expressions: `v.x` and `player.pos.y` are answered, `v.x + 1` is not. A condition
-  field would promise an evaluator that does not exist.
-- **Exception breakpoints do not exist.** A Lyric panic ends the program rather than stopping it;
-  the message and the backtrace land in the console and the exit code is 101.
-- **The standard library is not steppable**, and the global initializer runs before the debugger
-  attaches — both are properties of the adapter, described in the toolchain's debugging guide.
+The debugger needs **lldb-dap** — LLVM's, or Xcode's on macOS — on the `PATH` (`lldb-dap`,
+`lldb-dap-<version>`) or where `LYRIC_LLDB_DAP` names it. On Windows it is measured, not
+promised. Breakpoint conditions are not offered: lldb reads a condition over the program's C
+names, not its Lyric ones.
 
 When a session misbehaves, the whole DAP conversation can be written to disk: set
-`dap.message.trace.dir` in **Help | Find Action | Registry** to a folder, and the requests and
-responses land there as files.
-
-## Attaching to a running host
-
-A **Lyric Attach** configuration debugs a program that is already running inside a host — a game, an
-editor, anything embedding the VM. There the adapter is not a process this plugin starts: it lives
-inside the host, beside the program it debugs, and serves the protocol over a socket the host
-opened. The configuration is the host and the port; everything else the host already knows.
-
-Nothing is compiled and nothing is started. A breakpoint set here binds against the program as it
-runs and takes effect the next time execution reaches that line — which is the point, because the
-bug worth stopping at is rarely the one at startup. Disconnecting gives the program back: the
-breakpoints go and a parked thread is released, so the host runs on without a debugger holding it.
-
-It needs a host built against the toolchain's `DapServer`, from **2.9.0** on. The configuration has
-no Run button, because there is nothing here to run.
+`dap.message.trace.dir` in **Help | Find Action | Registry** to a folder.
 
 ## Requirements
 
 - A **commercial** JetBrains IDE, **2026.1 or newer** — the platform's LSP API does not exist in
-  the Community editions, and the features this plugin relies on (rename arrived in 2026.1,
-  signature help and workspace symbols in 2025.3, folding and inlay hints in 2025.2) set the
-  baseline. CLion, IntelliJ IDEA, Rider, GoLand, PyCharm and the rest all qualify.
-- The Lyric toolchain. `lyrls`, `lyric` and `lyrdbg` are found on `PATH`, or under the directory
-  named in **Settings | Languages & Frameworks | Lyric** — point it at the folder the release
-  archive unpacks to, and all three are configured at once. Debugging by launching needs a
-  toolchain of **2.3.0 or newer**, the release `lyrdbg` first shipped in; attaching needs
-  **2.9.0 or newer** on the host's side, where the adapter actually runs.
+  the Community editions, and its code lenses, rename, signature help, folding and inlay hints
+  set the baseline. CLion, IntelliJ IDEA, Rider, GoLand, PyCharm and the rest all qualify.
+- The Lyric 5 toolchain: `lyric` on the `PATH`, or under the directory named in **Settings |
+  Languages & Frameworks | Lyric**. Until 5.0 is released, the binary of the dev channel
+  ([the `dev` release](https://github.com/lyriclang/lyric/releases/tag/dev)) is `lyric5`; the
+  plugin takes it from that directory where no `lyric` stands there.
 
 ## Installing
 
 Every release of **this repository** carries a `jetbrains-lyric-<version>.zip`. The plugin is
 versioned on its own cadence — the toolchain it talks to lives in
-[lyriclang/lyric](https://github.com/lyriclang/lyric) and releases separately. (Toolchain
-releases v1.8.0 through v1.9.1 carried the zip beside the archives; from here on it is found
-here.) In the IDE: **Settings | Plugins | ⚙ | Install Plugin from Disk…** and pick the zip. The
-plugin is not on the Marketplace; the release asset is the distribution.
+[lyriclang/lyric](https://github.com/lyriclang/lyric) and releases separately. In the IDE:
+**Settings | Plugins | ⚙ | Install Plugin from Disk…** and pick the zip. The plugin is not on the
+Marketplace; the release asset is the distribution.
 
 ## Building
 
@@ -94,55 +75,42 @@ plugin is not on the Marketplace; the release asset is the distribution.
 ```
 
 The zip lands in `build/distributions/`. `verifyPlugin` runs the JetBrains plugin verifier against
-both ends of the supported range — the 2026.1 baseline and the current release — and downloads
-those IDEs the first time. It is what stands in for tests here: the platform's DAP client is
-marked experimental, so the day it changes shape, that job is what says so.
+both ends of the supported range — the 2026.1 baseline and the current release. It is what stands
+in for tests here: the platform's DAP client is marked experimental, so the day it changes shape,
+that job is what says so.
 
-The TextMate grammar under `textmate/` is a working
-copy: its canonical home is `tooling/textmate` in
-[lyriclang/lyric](https://github.com/lyriclang/lyric), where the toolchain's test suite pins it
-against the lexer, and the `grammar-sync` CI job keeps the copy identical.
+The TextMate grammar under `textmate/syntaxes` is the file
+[tree-sitter-lyric](https://github.com/lyriclang/tree-sitter-lyric) makes from its grammar, and
+the `grammar-sync` CI job keeps it identical.
 
 ## The manual checklist
 
 The plugin's structure is verified by the build (`verifyPluginStructure`); what an IDE does with
 it is not — headless IDE tests cost more harness than this plugin has code. After a change, in a
-2026.1+ IDE with the toolchain on PATH:
+2026.1+ IDE with the toolchain on PATH (or named in the settings) and lldb-dap installed:
 
-1. Install the zip, restart, open a folder with a `lyric.json`.
+1. Install the zip, restart, open a folder with a `lyric.toml`.
 2. Open a `.lyr` file — highlighting appears (TextMate), and after a moment the squiggles of a
    deliberate error (server).
-3. Break a `pub fn` another file imports — the error appears in the importing file too.
-4. Hover a stdlib call — signature plus documentation.
-5. `Ctrl+B` on an imported name — lands in the declaring file, on the name.
-6. `Shift+F6` on a declared function — every use and the import clause follow; renaming
-   `println` is refused with the reason.
-7. Type `(` after a function name — the signature popup names the declared parameters.
-8. Collapse a function via the gutter; the closing brace stays visible.
-9. An unannotated `let` shows its inferred type inline.
-10. Right-click a `.lyr` file with a `main` → *Run 'file.lyr'*: the program's output appears in
-    the Run tool window, and the last line names the exit code.
-11. Break the file and run again — the `file:line:column` of the diagnostic opens the editor at
-    that position when clicked.
-12. Add `alpha "two words"` under *Arguments* in the configuration — `main(args)` sees two
-    arguments, not one and not none.
-13. Point *Program* at a `.lyrbc` built by `lyric build` — it runs without compiling.
-14. Set a breakpoint in the gutter of a `.lyr` line and press *Debug*: it hits, and the line is
-    highlighted before it runs.
-15. A breakpoint on a blank line or a declaration slides down to the next executable line.
-16. Step over, into and out — one step is one source line; a step into a stdlib call runs through
-    it.
-17. The call stack names each frame's function and line; selecting a frame shows its locals.
-18. Expand a struct, an enum payload and an array in the variables panel; module-level `let`s
-    stand under *Globals*.
-19. Hover a name in the editor while stopped — its value appears. `v.x` in the debug console
-    answers; `v.x + 1` says it is not a known name.
-20. Let the program panic — the session ends, the backtrace is in the console, exit code 101.
-21. Check the breakpoint dialog: Lyric line breakpoints carry no condition field, and no Lyric
-    exception category is offered.
-22. Against a host serving `DapServer` on a port: a **Lyric Attach** configuration connects, and
-    the configuration offers Debug but no Run.
-23. A breakpoint set while the host runs hits the next time the program reaches that line — with
-    no restart of anything.
-24. Stop the session: the host keeps running, and its next frame is not parked by a breakpoint
-    nobody is reading any more.
+3. Break a `pub fn` another module imports — the error appears in the importing file too.
+4. A lint's finding offers its quick fix (`Alt+Enter`); taking it changes the line.
+5. **Code | Reformat File** formats as `lyric fmt` does.
+6. Hover a std call — signature plus documentation. `Ctrl+B` on an imported name lands in the
+   declaring file, on the name.
+7. `Shift+F6` on a declared function — every use and the import clause follow.
+8. An unannotated `let` shows its inferred type inline.
+9. Above a `@Test`, **Run test** runs it: its line in the Run tool window, the exit code last.
+10. Right-click a `.lyr` file → *Run*: the package's program runs; the configuration names the
+    package's directory.
+11. Break the file and run again — the `file:line:column` of the finding opens the editor there.
+12. Add `alpha "two words"` under *Arguments* — the program sees two arguments.
+13. Set a breakpoint in the gutter and press *Debug*: it hits at that line, and the frame is named
+    `app.main.main`.
+14. Step over, into and out; the call stack names each frame by its Lyric name.
+15. The variables panel shows the locals by their Lyric names; a string shows its text, a struct
+    its fields.
+16. **Debug test** above a `@Test` stops at a breakpoint inside that test.
+17. Let the program panic under the debugger — it stops where it panics.
+18. Check the breakpoint dialog: Lyric line breakpoints carry no condition field.
+19. A **Lyric Attach** configuration with a running program's id attaches, and offers Debug but
+    no Run.

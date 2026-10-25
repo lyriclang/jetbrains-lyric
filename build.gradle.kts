@@ -1,5 +1,5 @@
 // The thin plugin: the .lyr file association, the bundled TextMate grammar, a descriptor that
-// starts lyrls, and a run configuration the driver and the debug adapter hang from. Everything
+// starts `lyric lsp`, and a run configuration `lyric run`, `lyric test` and `lyric dap` hang from. Everything
 // language-aware happens in the server — a PSI implementation would be a second frontend with a
 // permanent lag, and it is deliberately not built.
 
@@ -88,10 +88,9 @@ intellijPlatform {
     buildSearchableOptions = false
 }
 
-// The grammar's canonical home is the toolchain repository (tooling/textmate in
-// lyriclang/lyric), where the test suite pins it against the lexer. What lies under textmate/
-// here is the plugin's working copy; the grammar-sync CI job keeps it identical to the
-// canonical one.
+// The TextMate grammar is made by tree-sitter-lyric from its grammar (script/textmate.py). What
+// lies under textmate/syntaxes here is the file that script writes; the grammar-sync CI job keeps
+// it identical.
 tasks.processResources {
     from(layout.projectDirectory.dir("textmate")) {
         into("textmate")

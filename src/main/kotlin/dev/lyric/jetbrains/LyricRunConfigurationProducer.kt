@@ -5,9 +5,11 @@ import com.intellij.execution.actions.LazyRunConfigurationProducer
 import com.intellij.execution.configurations.ConfigurationFactory
 import com.intellij.openapi.util.Ref
 import com.intellij.psi.PsiElement
+import java.nio.file.Path
 
 /**
- * Run and Debug straight from a `.lyr` file, without opening the configuration dialog first.
+ * Run and Debug straight from a `.lyr` file, without opening the configuration dialog first: the
+ * package the file belongs to, or the file where it belongs to none — what `lyric run` would take.
  *
  * The context reaches this producer because the TextMate integration registers a parser for the
  * files it colors, so a `.lyr` buffer has a PSI file and therefore a location — the plugin itself
@@ -25,8 +27,9 @@ class LyricRunConfigurationProducer : LazyRunConfigurationProducer<LyricRunConfi
         val file = context.location?.virtualFile ?: return false
         if (file.extension != "lyr") return false
 
-        configuration.program = file.path
-        configuration.name = file.name
+        val root = LyricToolchain.packageOf(Path.of(file.path))
+        configuration.program = root?.toString() ?: file.path
+        configuration.name = root?.fileName?.toString() ?: file.name
         return true
     }
 
@@ -35,6 +38,8 @@ class LyricRunConfigurationProducer : LazyRunConfigurationProducer<LyricRunConfi
         context: ConfigurationContext,
     ): Boolean {
         val file = context.location?.virtualFile ?: return false
-        return file.extension == "lyr" && configuration.program == file.path
+        if (file.extension != "lyr" || configuration.test.isNotEmpty()) return false
+        val root = LyricToolchain.packageOf(Path.of(file.path))
+        return configuration.program == (root?.toString() ?: file.path)
     }
 }

@@ -6,7 +6,6 @@ import com.intellij.execution.configurations.ConfigurationFactory
 import com.intellij.execution.configurations.ConfigurationType
 import com.intellij.execution.configurations.ConfigurationTypeBase
 import com.intellij.execution.configurations.ConfigurationTypeUtil
-import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.configurations.LocatableConfigurationBase
 import com.intellij.execution.configurations.LocatableRunConfigurationOptions
 import com.intellij.execution.configurations.RunConfiguration
@@ -43,7 +42,7 @@ import javax.swing.JComponent
 class LyricRunConfigurationType : ConfigurationTypeBase(
     ID,
     "Lyric",
-    "Runs a Lyric program through the toolchain's driver",
+    "Runs a Lyric package, a script or the package's tests through the toolchain",
     AllIcons.RunConfigurations.Application,
 ) {
     init {
@@ -75,17 +74,18 @@ class LyricConfigurationFactory(type: ConfigurationType) : ConfigurationFactory(
  */
 class LyricRunOptions : LocatableRunConfigurationOptions() {
     var program: String? by string("")
+    var test: String? by string("")
     var programArguments: String? by string("")
     var workingDirectory: String? by string("")
     var stopOnEntry: Boolean by property(false)
 }
 
 /**
- * One Lyric program, started by the driver.
+ * One Lyric program — a package's directory or a file of its own —, or a package's tests.
  *
- * `lyric run` is deliberately the command: it is the one that compiles and runs in one step, and
- * it is what a terminal would do with the same file. An editor that runs a differently built
- * program than the command line does costs an afternoon of confusion exactly once.
+ * Run is the toolchain's `lyric run`, or `lyric test -f <test>` where a test is named: what a
+ * terminal would do, so the editor runs what the command line builds. Debug is `lyric dap`, which
+ * builds the same in the debug profile and runs it under lldb.
  */
 class LyricRunConfiguration(project: Project, factory: ConfigurationFactory, name: String) :
     LocatableConfigurationBase<LyricRunOptions>(project, factory, name) {
@@ -96,6 +96,13 @@ class LyricRunConfiguration(project: Project, factory: ConfigurationFactory, nam
         get() = getOptions().program.orEmpty()
         set(value) {
             getOptions().program = value
+        }
+
+    /** The package's tests whose names hold this text, instead of its program. */
+    var test: String
+        get() = getOptions().test.orEmpty()
+        set(value) {
+            getOptions().test = value
         }
 
     var programArguments: String
@@ -117,11 +124,8 @@ class LyricRunConfiguration(project: Project, factory: ConfigurationFactory, nam
             getOptions().stopOnEntry = value
         }
 
-    /** Where the process is started when the configuration names no directory of its own. */
-    fun effectiveWorkingDirectory(): String =
-        workingDirectory.ifEmpty {
-            Path.of(program).parent?.toString() ?: project.basePath.orEmpty()
-        }
+    /** The package's directory — the program's own where it names a file of its own. */
+    fun packageDirectory(): Path? = program.takeIf { it.isNotEmpty() }?.let { LyricToolchain.packageOf(Path.of(it)) }
 
     override fun getConfigurationEditor(): SettingsEditor<out RunConfiguration> =
         LyricRunConfigurationEditor(project)
@@ -130,26 +134,31 @@ class LyricRunConfiguration(project: Project, factory: ConfigurationFactory, nam
         program.takeIf { it.isNotEmpty() }?.let { Path.of(it).fileName.toString() }
 
     /**
-     * Refuses before a process exists rather than after one failed. The three answers are the
-     * three ways this can be wrong: nothing named, something named that is not a Lyric program,
-     * and something named that is not there.
+     * Refuses before a process exists rather than after one failed: nothing named, a directory
+     * that holds no package, a file that is no Lyric source, something that is not there, a test
+     * without a package.
      */
     override fun checkConfiguration() {
         val named = program
         if (named.isEmpty()) throw RuntimeConfigurationError("No program is set")
-
-        val extension = Path.of(named).fileName?.toString()?.substringAfterLast('.', "").orEmpty()
-        if (extension != "lyr" && extension != "lyrbc") {
-            throw RuntimeConfigurationError("'$named' is neither a .lyr source nor a .lyrbc module")
+        val path = Path.of(named)
+        if (Files.isDirectory(path)) {
+            if (!Files.isRegularFile(path.resolve("lyric.toml"))) {
+                throw RuntimeConfigurationError("'$named' holds no lyric.toml")
+            }
+        } else {
+            if (path.fileName?.toString()?.endsWith(".lyr") != true) {
+                throw RuntimeConfigurationError("'$named' is neither a package's directory nor a .lyr file")
+            }
+            if (!Files.isRegularFile(path)) throw RuntimeConfigurationError("'$named' does not exist")
         }
-
-        if (!Files.isRegularFile(Path.of(named))) {
-            throw RuntimeConfigurationError("'$named' does not exist")
+        if (test.isNotEmpty() && packageDirectory() == null) {
+            throw RuntimeConfigurationError("a test belongs to a package, and '$named' is in none")
         }
     }
 
     /**
-     * The one fork in the plugin: Run starts the driver, Debug starts nothing at all — there the
+     * The one fork in the plugin: Run starts the toolchain, Debug starts nothing at all — there the
      * adapter owns the program, and the state exists only to carry the console the platform hands
      * to the debug process.
      */
@@ -174,33 +183,36 @@ class LyricRunProfileState(
 ) : CommandLineState(environment) {
 
     init {
-        // A compiler diagnostic reads 'file:line:column: error[LYR-XXXNNNN]: message'. Turning the
-        // position into a link is what the VS Code extension gets from its problem matcher.
+        // A finding's place reads '--> file:line:column' under its message; the position becomes a
+        // link, as the VS Code extension's problem matcher makes it one.
         addConsoleFilters(
             RegexpFilter(
                 environment.project,
-                "${RegexpFilter.FILE_PATH_MACROS}:${RegexpFilter.LINE_MACROS}:${RegexpFilter.COLUMN_MACROS}:",
+                "${RegexpFilter.FILE_PATH_MACROS}:${RegexpFilter.LINE_MACROS}:${RegexpFilter.COLUMN_MACROS}",
             )
         )
     }
 
     override fun startProcess(): ProcessHandler {
-        val arguments = ParametersListUtil.parse(configuration.programArguments)
+        val program = Path.of(configuration.program)
+        val root = configuration.packageDirectory()
+        val commandLine = when {
+            configuration.test.isNotEmpty() -> LyricToolchain.command("test", "-f", configuration.test, "-C", root.toString())
+            Files.isDirectory(program) -> LyricToolchain.command("run", "-C", program.toString())
+            else -> LyricToolchain.command("run", program.toString())
+        }
+        commandLine.withCharset(StandardCharsets.UTF_8)
 
-        val commandLine = GeneralCommandLine(LyricToolchain.driver())
-            .withParameters("run", configuration.program)
-            .withCharset(StandardCharsets.UTF_8)
-
-        // Everything before '--' belongs to the compiler, everything after it to the program.
-        // Without the separator an argument meant for main() is read as a compiler option and the
+        // Everything before '--' belongs to the toolchain, everything after it to the program.
+        // Without the separator an argument meant for the program is read as an option and the
         // run fails on something the user never typed.
-        if (arguments.isNotEmpty()) {
+        val arguments = ParametersListUtil.parse(configuration.programArguments)
+        if (arguments.isNotEmpty() && configuration.test.isEmpty()) {
             commandLine.withParameters("--").withParameters(arguments)
         }
 
-        configuration.effectiveWorkingDirectory()
-            .takeIf { it.isNotEmpty() }
-            ?.let { commandLine.withWorkingDirectory(Path.of(it)) }
+        val directory = configuration.workingDirectory.ifEmpty { (root ?: program.parent)?.toString().orEmpty() }
+        if (directory.isNotEmpty()) commandLine.withWorkingDirectory(Path.of(directory))
 
         val handler = ProcessHandlerFactory.getInstance().createColoredProcessHandler(commandLine)
         ProcessTerminatedListener.attach(handler)
@@ -211,16 +223,17 @@ class LyricRunProfileState(
 /** Run | Edit Configurations | Lyric. */
 class LyricRunConfigurationEditor(project: Project) : SettingsEditor<LyricRunConfiguration>() {
     private val program = TextFieldWithBrowseButton()
+    private val test = JBTextField()
     private val programArguments = JBTextField()
     private val workingDirectory = TextFieldWithBrowseButton()
-    private val stopOnEntry = JBCheckBox("Stop on the first line of main")
+    private val stopOnEntry = JBCheckBox("Stop before the program's first instruction")
 
     init {
         program.addBrowseFolderListener(
             project,
-            FileChooserDescriptorFactory.singleFile()
-                .withTitle("Lyric Program")
-                .withFileFilter { it.extension == "lyr" || it.extension == "lyrbc" },
+            FileChooserDescriptorFactory.singleFileOrDir()
+                .withTitle("Lyric Package or File")
+                .withFileFilter { it.isDirectory || it.extension == "lyr" },
         )
 
         workingDirectory.addBrowseFolderListener(
@@ -233,17 +246,22 @@ class LyricRunConfigurationEditor(project: Project) : SettingsEditor<LyricRunCon
         row("Program:") {
             cell(program)
                 .align(AlignX.FILL)
-                .comment("A .lyr source, or a .lyrbc module built by 'lyric build'.")
+                .comment("A package's directory, the one its lyric.toml stands in, or a .lyr file of its own.")
+        }
+        row("Test:") {
+            cell(test)
+                .align(AlignX.FILL)
+                .comment("Run or debug the package's tests whose names hold this text instead of its program.")
         }
         row("Arguments:") {
             cell(programArguments)
                 .align(AlignX.FILL)
-                .comment("Passed to main(args: string[]), split the way a shell would split them.")
+                .comment("Passed to the program, split the way a shell would split them.")
         }
         row("Working directory:") {
             cell(workingDirectory)
                 .align(AlignX.FILL)
-                .comment("Left empty, the program's own directory is used.")
+                .comment("Left empty, the package's directory is used.")
         }
         row {
             cell(stopOnEntry)
@@ -253,6 +271,7 @@ class LyricRunConfigurationEditor(project: Project) : SettingsEditor<LyricRunCon
 
     override fun resetEditorFrom(configuration: LyricRunConfiguration) {
         program.text = configuration.program
+        test.text = configuration.test
         programArguments.text = configuration.programArguments
         workingDirectory.text = configuration.workingDirectory
         stopOnEntry.isSelected = configuration.stopOnEntry
@@ -260,6 +279,7 @@ class LyricRunConfigurationEditor(project: Project) : SettingsEditor<LyricRunCon
 
     override fun applyEditorTo(configuration: LyricRunConfiguration) {
         configuration.program = program.text
+        configuration.test = test.text.trim()
         configuration.programArguments = programArguments.text
         configuration.workingDirectory = workingDirectory.text
         configuration.stopOnEntry = stopOnEntry.isSelected
