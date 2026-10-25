@@ -1,35 +1,47 @@
 package dev.lyric.jetbrains
 
+import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.openapi.util.SystemInfo
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Where the toolchain's binaries live — the same ladder the VS Code extension climbs: an explicit
- * setting first, then the bare name, which leaves the lookup to PATH.
+ * Where the toolchain lives — the same ladder the VS Code extension climbs: an explicit setting
+ * first, then the bare name, which leaves the lookup to PATH.
  *
- * The setting names the toolchain DIRECTORY rather than a binary, because the directory is what an
- * installation is and one installation holds all of them: configuring it configures the server,
- * the driver and the debug adapter at once.
+ * Lyric 5 is one binary, `lyric`, whose verbs are the compiler, the language server (`lyric lsp`)
+ * and the debug adapter (`lyric dap`). The setting names the toolchain DIRECTORY, because that is
+ * what an installation is; until 5.0 is released, the dev channel's binary there is `lyric5`, and
+ * it is taken where no `lyric` is.
  */
 object LyricToolchain {
-    /** The driver: the one command that compiles and runs in one step. */
-    fun driver(): String = binary("lyric")
-
-    /** The language server behind diagnostics, completion, navigation and the rest. */
-    fun languageServer(): String = binary("lyrls")
-
-    /** The debug adapter the debugger speaks to. */
-    fun debugAdapter(): String = binary("lyrdbg")
-
-    private fun binary(name: String): String {
+    /** The toolchain's binary. */
+    fun lyric(): String {
         val configured = LyricSettings.instance.state.toolchainDirectory.trim()
         if (configured.isNotEmpty()) {
-            val fileName = if (SystemInfo.isWindows) "$name.exe" else name
-            val candidate = Path.of(configured).resolve(fileName)
-            if (Files.isRegularFile(candidate)) return candidate.toString()
+            for (name in listOf("lyric", "lyric5")) {
+                val fileName = if (SystemInfo.isWindows) "$name.exe" else name
+                val candidate = Path.of(configured).resolve(fileName)
+                if (Files.isRegularFile(candidate)) return candidate.toString()
+            }
         }
 
-        return name
+        return "lyric"
+    }
+
+    /** A verb of the toolchain, as a command line: `lyric lsp`, `lyric dap`, `lyric run`. */
+    fun command(vararg verb: String): GeneralCommandLine = GeneralCommandLine(lyric()).withParameters(*verb)
+
+    /**
+     * The package a file belongs to: the directory of the nearest `lyric.toml` at or above it, or
+     * null for a file of its own — which the toolchain builds as a script.
+     */
+    fun packageOf(file: Path): Path? {
+        var dir: Path? = if (Files.isDirectory(file)) file else file.parent
+        while (dir != null) {
+            if (Files.isRegularFile(dir.resolve("lyric.toml"))) return dir
+            dir = dir.parent
+        }
+        return null
     }
 }

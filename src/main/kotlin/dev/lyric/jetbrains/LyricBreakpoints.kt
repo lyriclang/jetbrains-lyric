@@ -9,15 +9,15 @@ import com.intellij.xdebugger.breakpoints.XLineBreakpointType
 
 /**
  * Where a breakpoint may stand: in a `.lyr` file, on any line — the same rule the language server
- * uses to decide a file is ours, and the same one the adapter applies when it binds.
+ * uses to decide a file is ours.
  *
- * Whether a line actually carries code is the debugger's answer, not the editor's: `lyrdbg` slides
- * a breakpoint down to the next executable line and reports back whether it bound. Guessing here
+ * Whether a line actually carries code is the debugger's answer, not the editor's: lldb binds a
+ * breakpoint by the line table the compiler wrote and reports back whether it bound. Guessing here
  * would mean a second, worse line table beside the compiler's.
  *
- * No [com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider] is offered, which is what keeps
- * the condition and log-expression fields out of the breakpoint dialog. The debugger evaluates
- * NAMES, not expressions; a condition field would promise an evaluator that does not exist.
+ * No [com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider] is offered, which keeps the
+ * condition field out of the breakpoint dialog: lldb would read a condition over the program's C
+ * names, not its Lyric ones, and a field that takes Lyric's would promise what it does not do.
  */
 class LyricLineBreakpointType :
     XLineBreakpointType<XBreakpointProperties<*>>("lyric-line", "Lyric Line Breakpoints") {
@@ -30,20 +30,18 @@ class LyricLineBreakpointType :
 }
 
 /**
- * Declared because the platform's DAP integration requires a type for exception breakpoints, and
- * deliberately impossible to create: a Lyric panic ends the program, it does not stop it. The
- * adapter reports no stop with reason `exception`, so a breakpoint of this kind could never hit.
- *
- * Hiding it from the dialog is the honest form. Registering nothing is not an option — the
- * description the descriptor hands over takes two type classes, both non-null.
+ * Declared because the platform's DAP integration requires a type for exception breakpoints. A
+ * panic is the adapter's one filter, `lyric-panic`, on unless the editor turns it off: the program
+ * stops where it panics with nothing set here. So the type offers nothing to create — a breakpoint
+ * of it could only repeat what the filter already does.
  */
 class LyricExceptionBreakpointType : XBreakpointType<
     XBreakpoint<XBreakpointProperties<*>>,
     XBreakpointProperties<*>,
-    >("lyric-exception", "Lyric Exceptions") {
+    >("lyric-exception", "Lyric Panics") {
 
     override fun getDisplayText(breakpoint: XBreakpoint<XBreakpointProperties<*>>): String =
-        "Lyric exception"
+        "Lyric panic"
 
     override fun isAddBreakpointButtonVisible(): Boolean = false
 

@@ -22,16 +22,16 @@ import com.intellij.ui.dsl.builder.panel
 import javax.swing.JComponent
 
 /**
- * Attaching to a program a host is already running — a game, an editor, anything embedding the VM.
+ * Attaching to a Lyric program that is already running, by its process id — lldb's attach, through
+ * the same `lyric dap` a launch uses.
  *
  * A separate type rather than a mode on the run configuration, because the two share nothing: there
- * is no program to name, no arguments to pass and nothing to run. What is configured here is where
- * to connect; the host owns everything else, including the program's output.
+ * is no program to build, no arguments to pass and nothing to run.
  */
 class LyricAttachConfigurationType : ConfigurationTypeBase(
     ID,
     "Lyric Attach",
-    "Attaches to a Lyric program a host is already running",
+    "Attaches the debugger to a running Lyric program by its process id",
     AllIcons.RunConfigurations.Remote,
 ) {
     init {
@@ -58,17 +58,11 @@ class LyricAttachConfigurationFactory(type: ConfigurationType) : ConfigurationFa
 }
 
 class LyricAttachOptions : LocatableRunConfigurationOptions() {
-    var host: String? by string("127.0.0.1")
-    var port: Int by property(DefaultPort)
-
-    companion object {
-        /** Nothing in the toolchain fixes a port — the host opens the socket and picks one. */
-        const val DefaultPort: Int = 4711
-    }
+    var pid: Int by property(0)
 }
 
 /**
- * One connection to a host's own debug adapter.
+ * One attach to a process.
  *
  * The Run executor is suppressed rather than left to fail: there is nothing here to run, and a
  * button that can only report that is worse than no button.
@@ -79,31 +73,20 @@ class LyricAttachConfiguration(project: Project, factory: ConfigurationFactory, 
 
     override fun getOptions(): LyricAttachOptions = super.getOptions() as LyricAttachOptions
 
-    var host: String
-        get() = getOptions().host.orEmpty().ifEmpty { "127.0.0.1" }
+    var pid: Int
+        get() = getOptions().pid
         set(value) {
-            getOptions().host = value
-        }
-
-    var port: Int
-        get() = getOptions().port
-        set(value) {
-            getOptions().port = value
+            getOptions().pid = value
         }
 
     override fun getConfigurationEditor(): SettingsEditor<out RunConfiguration> =
         LyricAttachConfigurationEditor()
 
     override fun checkConfiguration() {
-        if (host.isBlank()) throw RuntimeConfigurationError("No host is set")
-        if (port !in 1..65535) throw RuntimeConfigurationError("'$port' is not a port")
+        if (pid <= 0) throw RuntimeConfigurationError("No process id is set")
     }
 
-    /**
-     * Debug only, and the state starts nothing — as with a launch, except that here there is not
-     * even a program to start: the adapter is inside the host, and this end contributes the socket
-     * and the console the session prints into.
-     */
+    /** Debug only, and the state starts nothing: the process runs already. */
     override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState? =
         if (executor.id == DefaultDebugExecutor.EXECUTOR_ID) {
             LyricDebugStubState(environment)
@@ -114,32 +97,23 @@ class LyricAttachConfiguration(project: Project, factory: ConfigurationFactory, 
 
 /** Run | Edit Configurations | Lyric Attach. */
 class LyricAttachConfigurationEditor : SettingsEditor<LyricAttachConfiguration>() {
-    private val host = JBTextField()
-    private val port = JBTextField()
+    private val pid = JBTextField()
 
     override fun createEditor(): JComponent = panel {
-        row("Host:") {
-            cell(host).align(AlignX.FILL)
-        }
-        row("Port:") {
-            cell(port)
+        row("Process id:") {
+            cell(pid)
                 .align(AlignX.FILL)
-                .comment(
-                    "The port the host serves its debug adapter on — it opens the socket and " +
-                        "chooses the number, so this is its setting rather than the toolchain's."
-                )
+                .comment("The running program's process id; lldb attaches to it.")
         }
     }
 
     override fun resetEditorFrom(configuration: LyricAttachConfiguration) {
-        host.text = configuration.host
-        port.text = configuration.port.toString()
+        pid.text = configuration.pid.takeIf { it > 0 }?.toString().orEmpty()
     }
 
     override fun applyEditorTo(configuration: LyricAttachConfiguration) {
-        configuration.host = host.text.trim()
-        // A number that is not one keeps the previous port; checkConfiguration is what reports a
-        // port nobody can connect to, and it reads what is stored rather than what was typed.
-        configuration.port = port.text.trim().toIntOrNull() ?: configuration.port
+        // A number that is not one keeps the previous id; checkConfiguration is what reports an id
+        // nobody can attach to, and it reads what is stored rather than what was typed.
+        configuration.pid = pid.text.trim().toIntOrNull() ?: configuration.pid
     }
 }

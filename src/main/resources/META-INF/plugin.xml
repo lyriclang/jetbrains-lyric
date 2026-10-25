@@ -4,17 +4,19 @@
     <vendor>lyriclang</vendor>
 
     <description><![CDATA[
-        Language support for <a href="https://github.com/lyriclang/lyric">Lyric</a> through its own
-        language server: project-wide diagnostics, completion, go to definition, find references,
-        rename, semantic highlighting, signature help, folding and inlay hints — every answer
-        comes from the Lyric compiler, none from a re-implementation.
+        Language support for <a href="https://github.com/lyriclang/lyric">Lyric</a> 5 through the
+        toolchain's own language server, <code>lyric lsp</code>: diagnostics for the whole package,
+        quick fixes, formatting, completion, go to definition, find references, rename, semantic
+        highlighting, signature help, folding, inlay hints, and Run and Debug lenses above every
+        test — every answer comes from the Lyric compiler, none from a re-implementation.
         <br/><br/>
-        A <b>Lyric</b> run configuration runs a program through the toolchain's driver, and the
-        editor's context menu offers one for the file it stands on. The same configuration under
-        Debug starts the toolchain's debug adapter: breakpoints, stepping, the call stack and the
-        variables panel, all answered by the Lyric debugger.
+        A <b>Lyric</b> run configuration runs a package, a script or the package's tests through
+        the toolchain, and the editor's context menu offers one for the file it stands on. The same
+        configuration under Debug starts <code>lyric dap</code>, which builds the program and debugs
+        it with lldb: breakpoints, stepping, the call stack, the variables by their Lyric names, and
+        a stop where a panic happens. <b>Lyric Attach</b> attaches to a running program by its id.
         <br/><br/>
-        The binaries are found on PATH, or under the toolchain directory named in
+        <code>lyric</code> is found on PATH, or under the toolchain directory named in
         <i>Settings&nbsp;|&nbsp;Languages&nbsp;&amp;&nbsp;Frameworks&nbsp;|&nbsp;Lyric</i>.
     ]]></description>
 
